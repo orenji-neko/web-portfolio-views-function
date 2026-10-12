@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
@@ -28,12 +30,16 @@ public class Function
         APIGatewayHttpApiV2ProxyRequest request,
         ILambdaContext context)
     {
+        var ip = request.RequestContext.Http.SourceIp;
+        var userAgent = Truncate(request.RequestContext.Http.UserAgent, 512);
+        var bucket = DateTime.UtcNow.ToString("yyyy-MM-dd"); // daily
+
         var view = new View()
         {
-            ViewId = Guid.NewGuid().ToString(),
-            ViewedAt = DateTime.UtcNow.ToString("o"),
-            IpAddress = request.RequestContext.Http.SourceIp,
-            UserAgent = Truncate(request.RequestContext.Http.UserAgent, 512)
+            ViewId = Hash($"{ip}|{userAgent}|{bucket}"),
+            ViewedAt = bucket,
+            IpAddress = ip,
+            UserAgent = userAgent
         };
 
         await Db.SaveAsync(view);
@@ -42,4 +48,7 @@ public class Function
 
     private static string Truncate(string? value, int max) =>
         string.IsNullOrEmpty(value) ? string.Empty : value.Length <= max ? value : value[..max];
+
+    private static string Hash(string value) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }
