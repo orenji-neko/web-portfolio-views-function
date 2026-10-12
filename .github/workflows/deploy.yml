@@ -1,0 +1,49 @@
+name: Deploy AWS Lambda Function
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency: deploy-lambda
+
+env:
+  AWS_ARN_ROLE: ${{ secrets.AWS_ARN_ROLE }}
+  AWS_REGION: ap-southeast-1
+
+  FUNCTION_NAME: portfolio-web-views
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        run: dotnet publish -c Release -r linux-x64 --self-contained false -o ./publish
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ARN_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Lambda Function
+        uses: aws-actions/aws-lambda-deploy@v1
+        with:
+          function-name: ${{ env.FUNCTION_NAME }}
+          code-artifacts-dir: ./publish
+          runtime: dotnet10
+          handler: 'PortfolioWebViews::PortfolioWebViews.Function::FunctionHandler'
+          memory-size: 512
+          timeout: 30
+          architectures: x86_64
